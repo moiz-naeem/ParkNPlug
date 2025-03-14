@@ -8,7 +8,12 @@ dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
 
+
 .mvn/wrapper/maven-wrapper.jar
+
+.idea/
+
+src/main/java/server/.idea/
 
 # Eclipse m2e generated files
 # Eclipse Core
