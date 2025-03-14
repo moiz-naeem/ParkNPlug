@@ -1,0 +1,16 @@
+{
+	"recordIdentifier": "Saturn",
+	"recordDescription": "Notes about Saturn during observation",
+	"recordPayload": "Saturn's rings clearly visible, no significant changes observed",
+	"recordRightAscension": "12h 45m 30s",
+	"recordDeclination": "-10° 30' 45\"",
+	"recordOwner": "Anna",
+	"observatory": [
+		{
+			"observatoryName": "Helsinki University Observatory",
+			"latitude": "60.16985569999999",
+			"longitude": "24.93837910000002"
+		}
+	]
+}
+
