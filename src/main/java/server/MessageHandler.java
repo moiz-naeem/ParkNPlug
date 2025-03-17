@@ -106,56 +106,32 @@ public class MessageHandler implements HttpHandler {
 			System.out.println("Before adding Observatory");
 			lock.lock();
 			try {
-				if (observatoryArray == null) {
-					if (observatoryWeatherArray == null) {
-						Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-							recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, null, null);
-						success = database.insertObservationRecord(message);
-					}
-					JSONObject observatoryWeatherObject = observatoryWeatherArray.getJSONObject(0);
-					Double temperatureInKelvins = observatoryWeatherObject.getDouble("temperatureInKelvins");
-					Double cloudinessPercentance = observatoryWeatherObject.getDouble("cloudinessPercentance");
-					Double bagroundLightVolume = observatoryWeatherObject.getDouble("bagroundLightVolume");
-					ObservatoryWeather observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
-
-					Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-						recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, null, observatoryWeather);
-
-
-				    System.out.println("Adding Observatory as null");
-				    System.out.println("Checking toString method" + message.toString());
-				    success = database.insertObservationRecord(message);
-
-				}
-
-				else{
+				Observatory observatoryData = null;
+				ObservatoryWeather observatoryWeatherData = null;
+				if(observatoryArray != null){
 					JSONObject observatory = observatoryArray.getJSONObject(0);
 					String observatoryName = observatory.getString("observatoryName");
 					Double latitude = observatory.getDouble("latitude");
 					Double longitude = observatory.getDouble("longitude");
-					Observatory observatoryData = new Observatory(observatoryName, latitude, longitude);
-
+					observatoryData = new Observatory(observatoryName, latitude, longitude);
+				}
+				if(observatoryWeatherArray != null){
 					JSONObject observatoryWeatherObject = observatoryWeatherArray.getJSONObject(0);
 					Double temperatureInKelvins = observatoryWeatherObject.getDouble("temperatureInKelvins");
 					Double cloudinessPercentance = observatoryWeatherObject.getDouble("cloudinessPercentance");
 					Double bagroundLightVolume = observatoryWeatherObject.getDouble("bagroundLightVolume");
-					ObservatoryWeather observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
-					Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-							recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData, observatoryWeather);
-
-                    System.out.println("Adding Observatory and Weather as Complete");
-					System.out.println("Checking toString method"+ message.toString()); ;
-					success = database.insertObservationRecord(message);
+					observatoryWeatherData = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
 
 				}
+				Message message = new Message(recordIdentifier, recordDescription, recordPayload,
+					recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData, observatoryWeatherData);
 
+					success = database.insertObservationRecord(message);
 
 			}finally {
 				lock.unlock();
 			}
 			String response = success ? "Message added successfully" : "Failed to add message";
-
-
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			Utils.sendResponse(exchange, success ? 200 : 400, response);
 		}catch(Exception e){
