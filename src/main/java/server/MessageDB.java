@@ -1,4 +1,4 @@
-package server;
+package com.o3.server;
 
 import java.io.File;
 import java.sql.*;
@@ -65,18 +65,28 @@ public class MessageDB {
 					+ "userNickname VARCHAR(50) NOT NULL UNIQUE"
 					+ ")";
 
-				String createMessagesTable = "CREATE TABLE IF NOT EXISTS messages ("
-					+ "recordIdentifier VARCHAR(50) NOT NULL,"
+				String createObservatoryTable = "CREATE TABLE IF NOT EXISTS Observatory ("
+					+ "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+					+ "observatoryName VARCHAR(100) NULL,"
+					+ "latitude DOUBLE NULL,"
+					+ "longitude DOUBLE NULL,"
+					+ "temperatureInKelvins DOUBLE NULL,"
+					+ "cloudinessPercentance DOUBLE NULL,"
+					+ "backgroundLightVolume DOUBLE NULL"
+					+ ");";
+
+				// Create Message Table
+				String createMessagesTable = "CREATE TABLE IF NOT EXISTS Message ("
+					+ "recordIdentifier VARCHAR(50) NOT NULL PRIMARY KEY,"
 					+ "recordDescription TEXT NOT NULL,"
 					+ "recordPayload TEXT NOT NULL,"
 					+ "recordRightAscension VARCHAR(50) NOT NULL,"
 					+ "recordDeclination VARCHAR(50) NOT NULL,"
 					+ "recordTimeReceived BIGINT NOT NULL,"
 					+ "recordOwner VARCHAR(50),"
-					+ "observatoryName VARCHAR(100) NULL,"
-					+ "latitude DOUBLE NULL,"
-					+ "longitude DOUBLE NULL"
-					+ ")";
+					+ "observatoryId INTEGER NULL,"
+					+ "FOREIGN KEY (observatoryId) REFERENCES Observatory(id)"
+					+ ");";
 
 
 
@@ -84,6 +94,7 @@ public class MessageDB {
 				try (Statement createStatement = dbConnection.createStatement()) {
 					createStatement.executeUpdate(createUsersTable);
 					createStatement.executeUpdate(createMessagesTable);
+					createStatement.executeUpdate(createObservatoryTable);
 					return true;
 				}catch (SQLException e) {
 					System.err.println("Error initializing database: " + e.getMessage());
