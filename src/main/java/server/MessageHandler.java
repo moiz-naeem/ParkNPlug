@@ -1,4 +1,4 @@
-package server;
+package com.o3.server;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
@@ -26,39 +26,20 @@ public class MessageHandler implements HttpHandler {
 		this.authenticator = authenticator;
 
 	}
-	private void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
-		exchange.sendResponseHeaders(statusCode, response.getBytes(StandardCharsets.UTF_8).length);
-		try (OutputStream outputStream = exchange.getResponseBody()) {
-			outputStream.write(response.getBytes(StandardCharsets.UTF_8));
-		}
-	}
-	private String[] getUSers(String authHeader) {
-		String base64Credentials = authHeader.substring("Basic ".length());
-		String credentials = new String(Base64.getDecoder().decode(base64Credentials), StandardCharsets.UTF_8);
-		String[] split = credentials.split(":", 2);
-		return new String[] { split[0], split[1] };
-	}
-
-	private boolean  invalidUser(String[] user ) {
-		if(user[0] == null || user[1] == null || !authenticator.checkCredentials(user[0], user[1])){
-			return true;
-		}
-		return false;
-	}
-
 
 	@Override
 	public void handle(HttpExchange exchange) throws IOException {
 		String[] user = new String[2];
 		System.out.println("Request handled in thread " + Thread.currentThread().getId());
 
+
 		JSONArray jsonArray = new JSONArray();
 		String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
 		if (authHeader != null && authHeader.startsWith("Basic ")) {
-			user = getUSers(authHeader);
+			user = Utils.getUSers(authHeader);
 		}
-		if (invalidUser(user)) {
-			sendResponse(exchange, 401, "Invalid or non-existent username" + " " +user[0] + " " + user[1]);
+		if (Utils.invalidUser(user)) {
+			Utils.sendResponse(exchange, 401, "Invalid or non-existent username" + " " +user[0] + " " + user[1]);
 			return;
 		}
 
@@ -76,14 +57,14 @@ public class MessageHandler implements HttpHandler {
 				handlePost(exchange, user, jsonRequest);
 			}catch (IOException e) {
 				System.err.println("Error reading request body: " + e.getMessage());
-				sendResponse(exchange, 400, jsonArray.toString());
+				Utils.sendResponse(exchange, 400, jsonArray.toString());
 			} catch (org.json.JSONException e) {
 				System.err.println("Invalid JSON format: " + e.getMessage());
-				sendResponse(exchange, 400, jsonArray.toString());
+				Utils.sendResponse(exchange, 400, jsonArray.toString());
 
 			} catch (SQLException e) {
 				e.printStackTrace();
-				sendResponse(exchange, 500, "Database error: " + e.getMessage());
+				Utils.sendResponse(exchange, 500, "Database error: " + e.getMessage());
 			}
 		}
 		else if ("GET".equals(exchange.getRequestMethod())) {
@@ -91,10 +72,10 @@ public class MessageHandler implements HttpHandler {
 				handleGet(exchange, user);
 			} catch (SQLException e) {
 				e.printStackTrace();
-				sendResponse(exchange, 500, "Database error: " + e.getMessage());
+				Utils.sendResponse(exchange, 500, "Database error: " + e.getMessage());
 			}
 		} else {
-			sendResponse(exchange, 405, "Method not allowed. Only POST and GET are implemented");
+			Utils.sendResponse(exchange, 405, "Method not allowed. Only POST and GET are implemented");
 		}
 	}
 
@@ -120,32 +101,49 @@ public class MessageHandler implements HttpHandler {
 			String recordDeclination = jsonRequest.getString("recordDeclination");
 
 			JSONArray observatoryArray = jsonRequest.optJSONArray("observatory");
+			JSONArray observatoryWeatherArray = jsonRequest.optJSONArray("observatoryWeather");
 			boolean  success = false;
 			System.out.println("Before adding Observatory");
 			lock.lock();
-			try{
-				if(observatoryArray == null){
+			try {
+				if (observatoryArray == null) {
+					if (observatoryWeatherArray == null) {
+						Message message = new Message(recordIdentifier, recordDescription, recordPayload,
+							recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, null, null);
+						success = database.insertObservationRecord(message);
+					}
+					JSONObject observatoryWeatherObject = observatoryWeatherArray.getJSONObject(0);
+					Double temperatureInKelvins = observatoryWeatherObject.getDouble("temperatureInKelvins");
+					Double cloudinessPercentance = observatoryWeatherObject.getDouble("cloudinessPercentance");
+					Double bagroundLightVolume = observatoryWeatherObject.getDouble("bagroundLightVolume");
+					ObservatoryWeather observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
+
 					Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-						recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, null);
-					System.out.println("Adding Observatory as null");
-					System.out.println("Checking toString method"+ message.toString()); ;
-					success = database.insertObservationRecord(message);
+						recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, null, observatoryWeather);
+
+
+				    System.out.println("Adding Observatory as null");
+				    System.out.println("Checking toString method" + message.toString());
+				    success = database.insertObservationRecord(message);
 
 				}
+
 				else{
 					JSONObject observatory = observatoryArray.getJSONObject(0);
 					String observatoryName = observatory.getString("observatoryName");
 					Double latitude = observatory.getDouble("latitude");
 					Double longitude = observatory.getDouble("longitude");
-
-
-
 					Observatory observatoryData = new Observatory(observatoryName, latitude, longitude);
-					System.out.println("Adding Observatory as Complete");
-					System.out.println(observatoryData);
 
+					JSONObject observatoryWeatherObject = observatoryWeatherArray.getJSONObject(0);
+					Double temperatureInKelvins = observatoryWeatherObject.getDouble("temperatureInKelvins");
+					Double cloudinessPercentance = observatoryWeatherObject.getDouble("cloudinessPercentance");
+					Double bagroundLightVolume = observatoryWeatherObject.getDouble("bagroundLightVolume");
+					ObservatoryWeather observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
 					Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-						recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData);
+							recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData, observatoryWeather);
+
+                    System.out.println("Adding Observatory and Weather as Complete");
 					System.out.println("Checking toString method"+ message.toString()); ;
 					success = database.insertObservationRecord(message);
 
@@ -159,9 +157,9 @@ public class MessageHandler implements HttpHandler {
 
 
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
-			sendResponse(exchange, success ? 200 : 400, response);
+			Utils.sendResponse(exchange, success ? 200 : 400, response);
 		}catch(Exception e){
-			sendResponse(exchange, 400, "Data does not conform Schema");
+			Utils.sendResponse(exchange, 400, "Data does not conform Schema");
 		}
 
 
@@ -196,12 +194,12 @@ public class MessageHandler implements HttpHandler {
 			}
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			if (jsonResponse.length() > 0) {
-				sendResponse(exchange, 200, jsonResponse.toString());
+				Utils.sendResponse(exchange, 200, jsonResponse.toString());
 			} else {
 
 				errorObject.put("error", "No records found for identifier");
 				errorResponse.put(errorObject);
-				sendResponse(exchange, 404, errorResponse.toString());
+				Utils.sendResponse(exchange, 404, errorResponse.toString());
 			}
 		}catch (SQLException e) {
 			System.err.println("Database error: " + e.getMessage());
@@ -209,14 +207,14 @@ public class MessageHandler implements HttpHandler {
 			JSONObject errorObject = new JSONObject();
 			errorObject.put("error", "Database error");
 			errorResponse.put(errorObject);
-			sendResponse(exchange, 500, errorResponse.toString());
+			Utils.sendResponse(exchange, 500, errorResponse.toString());
 		} catch (IOException e) {
 			System.err.println("IO error: " + e.getMessage());
 			JSONArray errorResponse = new JSONArray();
 			JSONObject errorObject = new JSONObject();
 			errorObject.put("error", "IO error");
 			errorResponse.put(errorObject);
-			sendResponse(exchange, 500, errorResponse.toString());
+			Utils.sendResponse(exchange, 500, errorResponse.toString());
 		}
 	}
 
