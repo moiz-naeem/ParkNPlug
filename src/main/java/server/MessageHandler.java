@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpExchange;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.json.XML;
+
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +44,7 @@ public class MessageHandler implements HttpHandler {
 		if (authHeader != null && authHeader.startsWith("Basic ")) {
 			user = Utils.getUSers(authHeader);
 		}
-		if (Utils.invalidUser(user)) {
+		if (Utils.invalidUser(user, authenticator)) {
 			Utils.sendResponse(exchange, 401, "Invalid or non-existent username" + " " +user[0] + " " + user[1]);
 			return;
 		}
@@ -129,13 +131,23 @@ public class MessageHandler implements HttpHandler {
 						"http://localhost:4001/wfs?latlon=%.2f,%.2f&parameters=temperatureInKelvins,cloudinessPercentance,bagroundLightVolume&starttime=%s",
 						latitude, longitude, DateTimeFormatter.ISO_INSTANT.format(Instant.now())
 					);
+					System.out.println("Endpoint" + endpointUrl);
+
+					String xmlResponse = Utils.sendRequest(endpointUrl);
+					JSONObject jsonRespose = XML.toJSONObject(xmlResponse);
+					System.out.println("XML to Json: " + jsonRespose);
+
+					Double[] parameterValues = Utils.extractParameters(jsonRespose);
 
 
-					observatoryWeatherData = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
+
+					observatoryWeatherData = new ObservatoryWeather(parameterValues[0], parameterValues[1], parameterValues[2]);
 
 				}
 				Message message = new Message(recordIdentifier, recordDescription, recordPayload,
 					recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData, observatoryWeatherData);
+
+				System.out.println("final message to be added: " + message);
 
 					success = database.insertObservationRecord(message);
 
@@ -146,12 +158,14 @@ public class MessageHandler implements HttpHandler {
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			Utils.sendResponse(exchange, success ? 200 : 400, response);
 		}catch(Exception e){
-			Utils.sendResponse(exchange, 400, "Data does not conform Schema");
+			Utils.sendResponse(exchange, 400, "Data does not conform Schema" + e);
 		}
 
 
 
 	}
+
+
 
 	private void handleGet(HttpExchange exchange, String[] user) throws IOException, SQLException {
 		try{
