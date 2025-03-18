@@ -27,7 +27,7 @@ public class RegistrationHandler implements HttpHandler {
 	public void handle(HttpExchange exchange) throws IOException {
 		System.out.println("Request handled in thread " + Thread.currentThread().getId());
 		if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-			sendResponse(exchange, 405, "Method not supported. Only POST is supported.");
+			Utils.sendResponse(exchange, 405, "Method not supported. Only POST is supported.");
 			return;
 		}
 		handlePost(exchange);
@@ -37,7 +37,7 @@ public class RegistrationHandler implements HttpHandler {
 		try {
 			String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
 			if (contentType == null || !contentType.equalsIgnoreCase("application/json")) {
-				sendResponse(exchange, 400, "Unsupported Content Type. Only application/json is supported.");
+				Utils.sendResponse(exchange, 400, "Unsupported Content Type. Only application/json is supported.");
 				return;
 			}
 
@@ -52,7 +52,7 @@ public class RegistrationHandler implements HttpHandler {
 
 			String requestBody = requestBodyBuilder.toString();
 			if (requestBody.isEmpty()) {
-				sendResponse(exchange, 400, "Request body is empty.");
+				Utils.sendResponse(exchange, 400, "Request body is empty.");
 				return;
 			}
 
@@ -60,7 +60,7 @@ public class RegistrationHandler implements HttpHandler {
 			try {
 				jsonObject = new JSONObject(requestBody);
 			} catch (JSONException e) {
-				sendResponse(exchange, 400, "Invalid JSON format!");
+				Utils.sendResponse(exchange, 400, "Invalid JSON format!");
 				System.err.println("JSON Parsing Error: " + e.getMessage());
 				return;
 			}
@@ -71,7 +71,7 @@ public class RegistrationHandler implements HttpHandler {
 			String userNickname = jsonObject.optString("userNickname", "").trim();
 
 			if (username.isEmpty() || password.isEmpty() || email.isEmpty() || userNickname.isEmpty()) {
-				sendResponse(exchange, 400, "Missing required fields: username, password, email, or userNickname.");
+				Utils.sendResponse(exchange, 400, "Missing required fields: username, password, email, or userNickname.");
 				return;
 			}
 
@@ -84,26 +84,19 @@ public class RegistrationHandler implements HttpHandler {
 			}
 
 			if (isRegistered) {
-				sendResponse(exchange, 200, "Registration Successful!");
+				Utils.sendResponse(exchange, 200, "Registration Successful!");
 			} else {
-				sendResponse(exchange, 409, "User already exists!");
+				Utils.sendResponse(exchange, 409, "User already exists!");
 			}
 		} catch (SQLException e) {
 			System.err.println("Database Error: " + e.getMessage());
-			sendResponse(exchange, 500, "Internal Server Error");
+			Utils.sendResponse(exchange, 500, "Internal Server Error");
 		} catch (Exception e) {
 			System.err.println("Unexpected Error: " + e.getMessage());
-			sendResponse(exchange, 500, "An unexpected error occurred.");
+			Utils.sendResponse(exchange, 500, "An unexpected error occurred.");
 		} finally {
 			exchange.close();
 		}
 	}
 
-	private void sendResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
-		byte[] response = message.getBytes(StandardCharsets.UTF_8);
-		exchange.sendResponseHeaders(statusCode, response.length);
-		try (OutputStream os = exchange.getResponseBody()) {
-			os.write(response);
-		}
-	}
 }
