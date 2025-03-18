@@ -1,4 +1,4 @@
-package com.o3.server;
+package server;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
@@ -9,12 +9,16 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.zone.ZoneRulesException;
 import java.util.Base64;
 import java.util.zip.ZipEntry;
 import java.util.concurrent.locks.ReentrantLock;
+import java.time.format.DateTimeFormatter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MessageHandler implements HttpHandler {
 	private final MessageDB database;
@@ -116,10 +120,17 @@ public class MessageHandler implements HttpHandler {
 					observatoryData = new Observatory(observatoryName, latitude, longitude);
 				}
 				if(observatoryWeatherArray != null){
-					JSONObject observatoryWeatherObject = observatoryWeatherArray.getJSONObject(0);
-					Double temperatureInKelvins = observatoryWeatherObject.getDouble("temperatureInKelvins");
-					Double cloudinessPercentance = observatoryWeatherObject.getDouble("cloudinessPercentance");
-					Double bagroundLightVolume = observatoryWeatherObject.getDouble("bagroundLightVolume");
+					JSONObject weatherData;
+					JSONObject observatory = observatoryArray.getJSONObject(0);
+					Double latitude = observatory.getDouble("latitude");
+					Double longitude = observatory.getDouble("longitude");
+
+					String endpointUrl = String.format(
+						"http://localhost:4001/wfs?latlon=%.2f,%.2f&parameters=temperatureInKelvins,cloudinessPercentance,bagroundLightVolume&starttime=%s",
+						latitude, longitude, DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+					);
+
+
 					observatoryWeatherData = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
 
 				}

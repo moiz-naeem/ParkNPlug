@@ -13,6 +13,7 @@ buildNumber.properties
 
 .idea/
 
+src/main/java/server/keystore.jks/
 src/main/java/server/.idea/
 
 # Eclipse m2e generated files

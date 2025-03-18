@@ -1,4 +1,4 @@
-package com.o3.server;
+package server;
 import org.json.JSONArray;
 
 import java.time.Instant;
