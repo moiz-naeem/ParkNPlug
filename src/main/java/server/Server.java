@@ -42,8 +42,10 @@ public class Server {
             UserAuthenticator authenticator = new UserAuthenticator();
             server.createContext("/registration", new RegistrationHandler(authenticator));
             server.createContext("/datarecord", new MessageHandler(database,authenticator));
+			server.createContext("/info", new MessageHandler(database,authenticator));
 
-            server.setExecutor(Executors.newCachedThreadPool());
+
+			server.setExecutor(Executors.newCachedThreadPool());
             server.start();
             System.out.println("Server started at port 8001");
 
