@@ -72,7 +72,7 @@ public class MessageDB {
 					+ "longitude DOUBLE NULL,"
 					+ "temperatureInKelvins DOUBLE NULL,"
 					+ "cloudinessPercentance DOUBLE NULL,"
-					+ "backgroundLightVolume DOUBLE NULL"
+					+ "bagroundLightVolume DOUBLE NULL"
 					+ ");";
 
 				String createMessagesTable = "CREATE TABLE IF NOT EXISTS messages ("
@@ -248,7 +248,7 @@ public class MessageDB {
 		}
 
 		String insertObservatoryQuery = "INSERT INTO Observatory (observatoryName, latitude, longitude, "
-			+ "temperatureInKelvins, cloudinessPercentance, backgroundLightVolume) "
+			+ "temperatureInKelvins, cloudinessPercentance, bagroundLightVolume) "
 			+ "VALUES (?, ?, ?, ?, ?, ?)";
 		String insertMessageQuery = "INSERT INTO messages (recordIdentifier, recordDescription, recordPayload, "
 			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner, observatoryId) "
@@ -282,9 +282,9 @@ public class MessageDB {
 		try (PreparedStatement observatoryStatement = dbConnection.prepareStatement(insertObservatoryQuery, Statement.RETURN_GENERATED_KEYS)) {
 			Observatory observatory = message.getObservatory();
 			if (observatory == null) {
-				observatoryStatement.setNull(1, Types.VARCHAR); // observatoryName
-				observatoryStatement.setNull(2, Types.DOUBLE);  // latitude
-				observatoryStatement.setNull(3, Types.DOUBLE);  // longitude
+				observatoryStatement.setNull(1, Types.VARCHAR);
+				observatoryStatement.setNull(2, Types.DOUBLE);
+				observatoryStatement.setNull(3, Types.DOUBLE);
 			} else {
 				observatoryStatement.setString(1, observatory.getObservatoryName());
 				observatoryStatement.setDouble(2, observatory.getLatitude());
@@ -293,9 +293,9 @@ public class MessageDB {
 
 			ObservatoryWeather weather = message.getObservatoryWeather();
 			if (weather == null) {
-				observatoryStatement.setNull(4, Types.DOUBLE); // temperatureInKelvins
-				observatoryStatement.setNull(5, Types.DOUBLE); // cloudinessPercentance
-				observatoryStatement.setNull(6, Types.DOUBLE); // backgroundLightVolume
+				observatoryStatement.setNull(4, Types.DOUBLE);
+				observatoryStatement.setNull(5, Types.DOUBLE);
+				observatoryStatement.setNull(6, Types.DOUBLE);
 			} else {
 				observatoryStatement.setDouble(4, weather.getTemperatureInKelvins());
 				observatoryStatement.setDouble(5, weather.getCloudinessPercentance());
@@ -330,49 +330,24 @@ public class MessageDB {
 	}
 
 	public JSONArray retrieveObservationRecord() throws SQLException {
-		if(!isConnectionValid()){
+		if (!isConnectionValid()) {
 			throw new SQLException("Database connection is not valid.");
 		}
+
 		JSONArray errorResponse = new JSONArray();
-		// System.out.println("Querying recordIdentifier: " + recordIdentifier);
-
-		// String query = "SELECT recordIdentifier, recordDescription, recordPayload, "
-		//     + "recordRightAscension, recordDeclination, recordTimeReceived "
-		//     + "FROM messages WHERE recordIdentifier = ?";
-
-		String messageQuery = "SELECT recordIdentifier, recordDescription, recordPayload, "
-			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner"
-			+ "FROM messages";
-
-		String observatoryQuery = "SELECT observatoryName, latitude, longitude, "
-			+ "temperatureInKelvins, cloudinessPercentance, bagroundLightVolume"
-			+ "FROM observatory";
+		String query = "SELECT m.recordIdentifier, m.recordDescription, m.recordPayload, "
+			+ "m.recordRightAscension, m.recordDeclination, m.recordTimeReceived, "
+			+ "m.recordOwner, o.observatoryName, o.latitude, o.longitude, "
+			+ "o.temperatureInKelvins, o.cloudinessPercentance, o.bagroundLightVolume "
+			+ "FROM messages m "
+			+ "LEFT JOIN observatory o ON m.observatoryId = o.id";
 
 		JSONArray messages = new JSONArray();
 		lock.lock();
-		try (PreparedStatement observatoryStatement = dbConnection.prepareStatement(observatoryQuery)) {
-			// preparedStatement.setString(1, recordIdentifier.trim());
-			try (ResultSet resultSet = observatoryStatement.executeQuery()) {
+		try (PreparedStatement statement = dbConnection.prepareStatement(query)) {
+			try (ResultSet resultSet = statement.executeQuery()) {
 				while (resultSet.next()) {
 					try {
-						String observatoryName = resultSet.getString("observatoryName");
-						Double latitude = resultSet.getObject("latitude") != null ? resultSet.getDouble("latitude") : null;
-						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
-
-						Observatory observatory = null;
-						if((observatoryName != null && !observatoryName.isEmpty()) && longitude != null) {
-							observatory = new Observatory(observatoryName, latitude, longitude);
-						}
-
-						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
-						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
-						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
-
-						ObservatoryWeather observatoryWeather = null;
-						if( temperatureInKelvins != null && cloudinessPercentance != null && bagroundLightVolume != null ) {
-							observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
-						}
-
 						Message message = new Message(
 							resultSet.getString("recordIdentifier"),
 							resultSet.getString("recordDescription"),
@@ -381,42 +356,51 @@ public class MessageDB {
 							resultSet.getString("recordDeclination"),
 							resultSet.getLong("recordTimeReceived"),
 							resultSet.getString("recordOwner"),
-							observatory,
-							observatoryWeather
-
+							null,
+							null
 						);
+
 						JSONObject json = new JSONObject();
 						json.put("recordIdentifier", message.getRecordIdentifier());
 						json.put("recordDescription", message.getRecordDescription());
 						json.put("recordPayload", message.getRecordPayload());
 						json.put("recordRightAscension", message.getRecordRightAscension());
 						json.put("recordDeclination", message.getRecordDeclination());
-						json.put("recordTimeReceived", message.getRecordTimeReceived());
 						json.put("recordOwner", message.getRecordOwner());
+						json.put("recordTimeReceived", message.getRecordTimeReceived());
 
-						if(observatory != null) {
-							JSONArray observation = new JSONArray();
-							JSONObject observationRecord = new JSONObject();
-							observationRecord.put("observatoryName", observatory.getObservatoryName());
-							observationRecord.put("latitude", observatory.getLatitude());
-							observationRecord.put("longitude", observatory.getLongitude());
-							observation.put(observationRecord);
-							json.put("observatory", observation);
+						JSONArray observatoryArray = new JSONArray();
+						String observatoryName = resultSet.getString("observatoryName");
+						Double latitude = resultSet.getObject("latitude") != null ? resultSet.getDouble("latitude") : null;
+						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
+						if (observatoryName != null && latitude != null && longitude != null) {
+							JSONObject observatoryJson = new JSONObject();
+							observatoryJson.put("observatoryName", observatoryName);
+							observatoryJson.put("latitude", latitude);
+							observatoryJson.put("longitude", longitude);
+							observatoryArray.put(observatoryJson);
 						}
-						if(observatoryWeather != null) {
-							JSONArray observationWeather = new JSONArray();
-							JSONObject observationWeatherRecord = new JSONObject();
-							observationWeatherRecord.put("temperatureInKelvins", message.getObservatoryWeather().getTemperatureInKelvins());
-							observationWeatherRecord.put("cloudinessPercentance", message.getObservatoryWeather().getCloudinessPercentance());
-							observationWeatherRecord.put("bagroundLightVolume", message.getObservatoryWeather().getBagroundLightVolume());
-							json.put("observatoryWeather", observationWeather);
+						json.put("observatory", observatoryArray);
+
+
+						JSONArray weatherArray = new JSONArray();
+						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
+						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
+						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
+						if (temperatureInKelvins != null && cloudinessPercentance != null && bagroundLightVolume != null) {
+							JSONObject weatherJson = new JSONObject();
+							weatherJson.put("temperatureInKelvins", temperatureInKelvins);
+							weatherJson.put("cloudinessPercentance", cloudinessPercentance);
+							weatherJson.put("bagroundLightVolume", bagroundLightVolume);
+							weatherArray.put(weatherJson);
+							json.put("observatoryWeather", weatherArray);
+
 						}
+
 						messages.put(json);
-
-					}catch (JSONException e) {
-						System.err.println("JSOn error: " + e.getMessage());
+					} catch (JSONException e) {
+						System.err.println("JSON error: " + e.getMessage());
 						return errorResponse;
-
 					}
 				}
 			}
@@ -426,14 +410,13 @@ public class MessageDB {
 		} catch (Exception e) {
 			System.err.println("Unexpected error: " + e.getMessage());
 			return errorResponse;
-		}finally {
+		} finally {
 			lock.unlock();
 		}
 
-		System.out.println("Final JSON Response: " + messages);
-		return new JSONArray(messages.toString());
-
+		return messages;
 	}
+
 
 
 

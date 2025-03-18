@@ -48,6 +48,7 @@ public class Message {
 		this.observatory = observatory;
 		this.observatoryWeather = observatoryWeather;
     }
+
     public void setRecordTimeReceived (long epoch) {
         this.recordTimeReceived = epoch;
         this.sent = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epoch), ZoneOffset.UTC);
@@ -150,6 +151,15 @@ public class Message {
 				.append("\t\t\t\"observatoryName\": \"").append(observatory.getObservatoryName()).append("\",\n")
 				.append("\t\t\t\"latitude\": \"").append(observatory.getLatitude()).append("\",\n")
 				.append("\t\t\t\"longitude\": \"").append(observatory.getLongitude()).append("\"\n")
+				.append("\t\t}\n")
+				.append("\t],\n");
+		}
+		if (observatoryWeather != null) {
+			sb.append("\t\"observatoryWeather\": [\n")
+				.append("\t\t{\n")
+				.append("\t\t\t\"temperatureInKelvins\": \"").append(observatoryWeather.getTemperatureInKelvins()).append("\",\n")
+				.append("\t\t\t\"cloudinessPercentance\": \"").append(observatoryWeather.getCloudinessPercentance()).append("\",\n")
+				.append("\t\t\t\"bagroundLightVolume\": \"").append(observatoryWeather.getBagroundLightVolume()).append("\"\n")
 				.append("\t\t}\n")
 				.append("\t],\n");
 		}
