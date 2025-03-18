@@ -65,7 +65,7 @@ public class MessageDB {
 					+ "userNickname VARCHAR(50) NOT NULL UNIQUE"
 					+ ")";
 
-				String createObservatoryTable = "CREATE TABLE IF NOT EXISTS Observatory ("
+				String createObservatoryTable = "CREATE TABLE IF NOT EXISTS observatory ("
 					+ "id INTEGER PRIMARY KEY AUTOINCREMENT,"
 					+ "observatoryName VARCHAR(100) NULL,"
 					+ "latitude DOUBLE NULL,"
@@ -75,8 +75,7 @@ public class MessageDB {
 					+ "backgroundLightVolume DOUBLE NULL"
 					+ ");";
 
-				// Create Message Table
-				String createMessagesTable = "CREATE TABLE IF NOT EXISTS Message ("
+				String createMessagesTable = "CREATE TABLE IF NOT EXISTS messages ("
 					+ "recordIdentifier VARCHAR(50) NOT NULL PRIMARY KEY,"
 					+ "recordDescription TEXT NOT NULL,"
 					+ "recordPayload TEXT NOT NULL,"
@@ -87,8 +86,6 @@ public class MessageDB {
 					+ "observatoryId INTEGER NULL,"
 					+ "FOREIGN KEY (observatoryId) REFERENCES Observatory(id)"
 					+ ");";
-
-
 
 
 				try (Statement createStatement = dbConnection.createStatement()) {
@@ -239,55 +236,96 @@ public class MessageDB {
 	}
 
 
-	private boolean checkInvalidMessage(Message message) {
-		if (message.getRecordIdentifier() == null || message.getRecordIdentifier().isEmpty()) {
-			System.out.println("Invalid message: " + message);
-			return true;
-		}
-		return false;
 
-	}
 
 
 	public boolean insertObservationRecord(Message message) throws SQLException {
-		if(checkInvalidMessage(message)){
-
-			throw new IllegalArgumentException("Invalid message format.");
-		};
-		if(!isConnectionValid()) {
+		if (message.getRecordIdentifier().isEmpty()) {
+			throw new IllegalArgumentException("Invalid message format: recordIdentifier is empty.");
+		}
+		if (!isConnectionValid()) {
 			throw new SQLException("Database connection is not valid.");
 		}
 
-		System.out.println("Inserting data: ");
-		String insertQuery = "INSERT INTO messages (recordIdentifier, recordDescription, recordPayload, "
-			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner, observatoryName, latitude, longitude) "
-			+ "VALUES (?, ?, ?, ?, ?, ?, ? , ? , ?,?)";
+		String insertObservatoryQuery = "INSERT INTO Observatory (observatoryName, latitude, longitude, "
+			+ "temperatureInKelvins, cloudinessPercentance, backgroundLightVolume) "
+			+ "VALUES (?, ?, ?, ?, ?, ?)";
+		String insertMessageQuery = "INSERT INTO messages (recordIdentifier, recordDescription, recordPayload, "
+			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner, observatoryId) "
+			+ "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
 		lock.lock();
-		try (PreparedStatement preparedStatement = dbConnection.prepareStatement(insertQuery)) {
+		try {
+			dbConnection.setAutoCommit(false);
 
-			preparedStatement.setString(1, message.getRecordIdentifier());
-			preparedStatement.setString(2, message.getRecordDescription());
-			preparedStatement.setString(3, message.getRecordPayload());
-			preparedStatement.setString(4, message.getRecordRightAscension());
-			preparedStatement.setString(5, message.getRecordDeclination());
-			preparedStatement.setLong(6, message.dateAsInt());
-			preparedStatement.setString(7, message.getRecordOwner());
+			Integer observatoryId = insertObservatory(dbConnection, message, insertObservatoryQuery);
 
-			if (message.getObservatory() != null) {
-				preparedStatement.setString(8, message.getObservatory().getObservatoryName());
-				preparedStatement.setDouble(9, message.getObservatory().getLatitude());
-				preparedStatement.setDouble(10, message.getObservatory().getLongitude());
-			} else {
-				preparedStatement.setNull(8, java.sql.Types.VARCHAR);
-				preparedStatement.setNull(9, java.sql.Types.DOUBLE);
-				preparedStatement.setNull(10, java.sql.Types.DOUBLE);
+			if (observatoryId == null) {
+				throw new SQLException("Failed to retrieve generated ID for observatory.");
 			}
 
+			insertMessage(dbConnection, message, insertMessageQuery, observatoryId);
 
-			preparedStatement.executeUpdate();
+			dbConnection.commit();
 			return true;
-		}finally {
+		} catch (SQLException e) {
+			dbConnection.rollback();
+			throw new SQLException("Failed to insert: " + e.getMessage(), e);
+		} finally {
+			dbConnection.setAutoCommit(true);
 			lock.unlock();
+		}
+	}
+
+
+	private Integer insertObservatory(Connection dbConnection, Message message, String insertObservatoryQuery) throws SQLException {
+		try (PreparedStatement observatoryStatement = dbConnection.prepareStatement(insertObservatoryQuery, Statement.RETURN_GENERATED_KEYS)) {
+			Observatory observatory = message.getObservatory();
+			if (observatory == null) {
+				observatoryStatement.setNull(1, Types.VARCHAR); // observatoryName
+				observatoryStatement.setNull(2, Types.DOUBLE);  // latitude
+				observatoryStatement.setNull(3, Types.DOUBLE);  // longitude
+			} else {
+				observatoryStatement.setString(1, observatory.getObservatoryName());
+				observatoryStatement.setDouble(2, observatory.getLatitude());
+				observatoryStatement.setDouble(3, observatory.getLongitude());
+			}
+
+			ObservatoryWeather weather = message.getObservatoryWeather();
+			if (weather == null) {
+				observatoryStatement.setNull(4, Types.DOUBLE); // temperatureInKelvins
+				observatoryStatement.setNull(5, Types.DOUBLE); // cloudinessPercentance
+				observatoryStatement.setNull(6, Types.DOUBLE); // backgroundLightVolume
+			} else {
+				observatoryStatement.setDouble(4, weather.getTemperatureInKelvins());
+				observatoryStatement.setDouble(5, weather.getCloudinessPercentance());
+				observatoryStatement.setDouble(6, weather.getBagroundLightVolume());
+			}
+
+			observatoryStatement.executeUpdate();
+
+			try (ResultSet generatedKeys = observatoryStatement.getGeneratedKeys()) {
+				if (generatedKeys.next()) {
+					return generatedKeys.getInt(1);
+				} else {
+					return null;
+				}
+			}
+		}
+	}
+
+	private void insertMessage(Connection dbConnection, Message message, String insertMessageQuery, int observatoryId) throws SQLException {
+		try (PreparedStatement messageStatement = dbConnection.prepareStatement(insertMessageQuery)) {
+			messageStatement.setString(1, message.getRecordIdentifier());
+			messageStatement.setString(2, message.getRecordDescription());
+			messageStatement.setString(3, message.getRecordPayload());
+			messageStatement.setString(4, message.getRecordRightAscension());
+			messageStatement.setString(5, message.getRecordDeclination());
+			messageStatement.setLong(6, message.dateAsInt());
+			messageStatement.setString(7, message.getRecordOwner());
+			messageStatement.setInt(8, observatoryId);
+
+			messageStatement.executeUpdate();
 		}
 	}
 
@@ -302,15 +340,19 @@ public class MessageDB {
 		//     + "recordRightAscension, recordDeclination, recordTimeReceived "
 		//     + "FROM messages WHERE recordIdentifier = ?";
 
-		String query = "SELECT recordIdentifier, recordDescription, recordPayload, "
-			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner, observatoryName, latitude, longitude "
+		String messageQuery = "SELECT recordIdentifier, recordDescription, recordPayload, "
+			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner"
 			+ "FROM messages";
+
+		String observatoryQuery = "SELECT observatoryName, latitude, longitude, "
+			+ "temperatureInKelvins, cloudinessPercentance, bagroundLightVolume"
+			+ "FROM observatory";
 
 		JSONArray messages = new JSONArray();
 		lock.lock();
-		try (PreparedStatement preparedStatement = dbConnection.prepareStatement(query)) {
+		try (PreparedStatement observatoryStatement = dbConnection.prepareStatement(observatoryQuery)) {
 			// preparedStatement.setString(1, recordIdentifier.trim());
-			try (ResultSet resultSet = preparedStatement.executeQuery()) {
+			try (ResultSet resultSet = observatoryStatement.executeQuery()) {
 				while (resultSet.next()) {
 					try {
 						String observatoryName = resultSet.getString("observatoryName");
@@ -318,10 +360,18 @@ public class MessageDB {
 						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
 
 						Observatory observatory = null;
-						if(observatoryName != null && !observatoryName.isEmpty()) {
+						if((observatoryName != null && !observatoryName.isEmpty()) && longitude != null) {
 							observatory = new Observatory(observatoryName, latitude, longitude);
 						}
 
+						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
+						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
+						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
+
+						ObservatoryWeather observatoryWeather = null;
+						if( temperatureInKelvins != null && cloudinessPercentance != null && bagroundLightVolume != null ) {
+							observatoryWeather = new ObservatoryWeather(temperatureInKelvins, cloudinessPercentance, bagroundLightVolume);
+						}
 
 						Message message = new Message(
 							resultSet.getString("recordIdentifier"),
@@ -331,7 +381,8 @@ public class MessageDB {
 							resultSet.getString("recordDeclination"),
 							resultSet.getLong("recordTimeReceived"),
 							resultSet.getString("recordOwner"),
-							observatory
+							observatory,
+							observatoryWeather
 
 						);
 						JSONObject json = new JSONObject();
@@ -352,7 +403,14 @@ public class MessageDB {
 							observation.put(observationRecord);
 							json.put("observatory", observation);
 						}
-
+						if(observatoryWeather != null) {
+							JSONArray observationWeather = new JSONArray();
+							JSONObject observationWeatherRecord = new JSONObject();
+							observationWeatherRecord.put("temperatureInKelvins", message.getObservatoryWeather().getTemperatureInKelvins());
+							observationWeatherRecord.put("cloudinessPercentance", message.getObservatoryWeather().getCloudinessPercentance());
+							observationWeatherRecord.put("bagroundLightVolume", message.getObservatoryWeather().getBagroundLightVolume());
+							json.put("observatoryWeather", observationWeather);
+						}
 						messages.put(json);
 
 					}catch (JSONException e) {

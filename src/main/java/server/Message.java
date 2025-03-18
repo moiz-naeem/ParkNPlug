@@ -1,4 +1,4 @@
-package server;
+package com.o3.server;
 import org.json.JSONArray;
 
 import java.time.Instant;
@@ -16,10 +16,11 @@ public class Message {
     private long recordTimeReceived;
 	private String recordOwner;
 	private Observatory observatory;
+	private ObservatoryWeather observatoryWeather;
 
     public Message(String recordIdentifier, String recordDescription, String recordPayload,
                    String recordRightAscension, String recordDeclination, ZonedDateTime sent,
-				   String recordOwner, Observatory observatory) {
+				   String recordOwner, Observatory observatory, ObservatoryWeather observatoryWeather) {
 
         this.recordIdentifier = recordIdentifier;
         this.recordDescription = recordDescription;
@@ -30,11 +31,12 @@ public class Message {
 		this.recordTimeReceived = ZonedDateTime.now().toInstant().toEpochMilli();
 		this.recordOwner = recordOwner;
 		this.observatory = observatory;
+		this.observatoryWeather = observatoryWeather;
 	}
 
     public Message(String recordIdentifier, String recordDescription, String recordPayload,
                    String recordRightAscension, String recordDeclination, long recordTimeReceived,
-				   String recordOwner , Observatory observatory) {
+				   String recordOwner , Observatory observatory, ObservatoryWeather observatoryWeather) {
         this.recordIdentifier = recordIdentifier;
         this.recordDescription = recordDescription;
         this.recordPayload = recordPayload;
@@ -44,6 +46,7 @@ public class Message {
         this.sent = ZonedDateTime.ofInstant(Instant.ofEpochMilli(recordTimeReceived), ZoneOffset.UTC);
 		this.recordOwner = recordOwner;
 		this.observatory = observatory;
+		this.observatoryWeather = observatoryWeather;
     }
     public void setRecordTimeReceived (long epoch) {
         this.recordTimeReceived = epoch;
@@ -90,8 +93,15 @@ public class Message {
         return recordPayload;
     }
 
+	public void setObservatoryWeather(ObservatoryWeather observatoryWeather) {
+		this.observatoryWeather = observatoryWeather;
+	}
 
-    public void setRecordPayload(String recordPayload) {
+	public ObservatoryWeather getObservatoryWeather() {
+		return observatoryWeather;
+	}
+
+	public void setRecordPayload(String recordPayload) {
         this.recordPayload = recordPayload;
     }
 
