@@ -1,4 +1,4 @@
-package com.o3.server;
+package server;
 
 public class ObservatoryWeather {
 	private Double temperatureInKelvins;
