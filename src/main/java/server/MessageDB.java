@@ -1,12 +1,15 @@
 package server;
 
 import java.io.File;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
 
 import org.apache.commons.codec.digest.Crypt;
@@ -15,6 +18,9 @@ import org.apache.commons.codec.digest.Crypt;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MessageDB {
@@ -329,6 +335,82 @@ public class MessageDB {
 		}
 	}
 
+	public  JSONArray retrieveParamerterizedObservationRecords( Map<String, String> parameters) throws SQLException {
+		StringBuilder queryBuilder = new StringBuilder(
+			"SELECT m.*, o.observatoryName, o.latitude, o.longitude, " +
+				"o.temperatureInKelvins, o.cloudinessPercentance, o.bagroundLightVolume " +
+				"FROM messages m " +
+				"LEFT JOIN observatory o ON m.observatoryId = o.id " +
+				"WHERE 1=1"
+		);
+		JSONArray messages = new JSONArray();
+
+		List<Object> parameterValues = new ArrayList<>();
+
+		for (Map.Entry<String, String> entry : parameters.entrySet()) {
+			String key = entry.getKey();
+			String value = entry.getValue();
+
+			switch (key) {
+				case "identification":
+					queryBuilder.append(" AND m.recordIdentifier = ?");
+					parameterValues.add(value);
+					break;
+				case "nickname":
+					queryBuilder.append(" AND m.recordOwner = ?");
+					parameterValues.add(value);
+					break;
+				case "before":
+					queryBuilder.append(" AND m.recordTimeReceived <= ?");
+					value = URLDecoder.decode(value, StandardCharsets.UTF_8);
+					Instant instant = Instant.parse(value);
+					parameterValues.add(instant.toEpochMilli());
+					break;
+				case "after":
+					queryBuilder.append(" AND m.recordTimeReceived >= ?");
+					value = URLDecoder.decode(value, StandardCharsets.UTF_8);
+					Instant instant2 = Instant.parse(value);
+					parameterValues.add(instant2.toEpochMilli());
+
+
+					break;
+				case "locations":
+					JSONArray locationsArray = new JSONArray(value);
+					if (locationsArray.length() > 0) {
+						queryBuilder.append(" AND m.recordIdentifier IN (");
+						for (int i = 0; i < locationsArray.length(); i++) {
+							queryBuilder.append("?");
+							if (i < locationsArray.length() - 1) {
+								queryBuilder.append(",");
+							}
+							parameterValues.add(locationsArray.getString(i));
+						}
+						queryBuilder.append(")");
+					}
+					break;
+				default:
+
+					break;
+			}
+		}
+		String query = queryBuilder.toString();
+		System.out.println(query);
+		lock.lock();
+		try(PreparedStatement statement = dbConnection.prepareStatement(query)) {
+			for (int i = 0; i < parameterValues.size(); i++) {
+				statement.setObject(i + 1, parameterValues.get(i));
+
+			}
+			messages = Utils.extractMessage(statement);
+
+
+		}finally {
+			lock.unlock();
+		}
+
+		return messages;
+	}
+
 	public JSONArray retrieveObservationRecord() throws SQLException {
 		if (!isConnectionValid()) {
 			throw new SQLException("Database connection is not valid.");
@@ -345,72 +427,7 @@ public class MessageDB {
 		JSONArray messages = new JSONArray();
 		lock.lock();
 		try (PreparedStatement statement = dbConnection.prepareStatement(query)) {
-			try (ResultSet resultSet = statement.executeQuery()) {
-				while (resultSet.next()) {
-					try {
-						Message message = new Message(
-							resultSet.getString("recordIdentifier"),
-							resultSet.getString("recordDescription"),
-							resultSet.getString("recordPayload"),
-							resultSet.getString("recordRightAscension"),
-							resultSet.getString("recordDeclination"),
-							resultSet.getLong("recordTimeReceived"),
-							resultSet.getString("recordOwner"),
-							null,
-							null
-						);
-
-						JSONObject json = new JSONObject();
-						json.put("recordIdentifier", message.getRecordIdentifier());
-						json.put("recordDescription", message.getRecordDescription());
-						json.put("recordPayload", message.getRecordPayload());
-						json.put("recordRightAscension", message.getRecordRightAscension());
-						json.put("recordDeclination", message.getRecordDeclination());
-						json.put("recordOwner", message.getRecordOwner());
-						json.put("recordTimeReceived", message.getRecordTimeReceived());
-
-						JSONArray observatoryArray = new JSONArray();
-						String observatoryName = resultSet.getString("observatoryName");
-						Double latitude = resultSet.getObject("latitude") != null ? resultSet.getDouble("latitude") : null;
-						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
-						if (observatoryName != null || latitude != null || longitude != null) {
-							JSONObject observatoryJson = new JSONObject();
-							observatoryJson.put("observatoryName", observatoryName);
-							observatoryJson.put("latitude", latitude);
-							observatoryJson.put("longitude", longitude);
-							observatoryArray.put(observatoryJson);
-							json.put("observatory", observatoryArray);
-
-						}
-
-
-						JSONArray weatherArray = new JSONArray();
-						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
-						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
-						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
-						if (temperatureInKelvins != null || cloudinessPercentance != null || bagroundLightVolume != null) {
-							JSONObject weatherJson = new JSONObject();
-							weatherJson.put("temperatureInKelvins", temperatureInKelvins);
-							weatherJson.put("cloudinessPercentance", cloudinessPercentance);
-							weatherJson.put("bagroundLightVolume", bagroundLightVolume);
-							weatherArray.put(weatherJson);
-							json.put("observatoryWeather", weatherArray);
-
-						}
-
-						messages.put(json);
-					} catch (JSONException e) {
-						System.err.println("JSON error: " + e.getMessage());
-						return errorResponse;
-					}
-				}
-			}
-		} catch (SQLException e) {
-			System.err.println("SQL error: " + e.getMessage());
-			return errorResponse;
-		} catch (Exception e) {
-			System.err.println("Unexpected error: " + e.getMessage());
-			return errorResponse;
+			messages = Utils.extractMessage(statement);
 		} finally {
 			lock.unlock();
 		}
