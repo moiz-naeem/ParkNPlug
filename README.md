@@ -9,6 +9,18 @@ The server communicates in JSON format, supports multithreading and is designed 
 ## Features
 - **User Registration**: Users can register via the `/registration` endpoint.
 - **Data Handling**: Registered users can post and retrieve data via the `/datarecord` endpoint.
+- **Internal API calls using payload data** : Registered users can post @info.json format data to `/info` endpoint 
+  if the user include observatoryWeather key the server calls FMI mock service using the latitude and longitude in payload to  retrieve 
+ the following data and adds it to observatoryWeather key which is returned when user sends a GET Request. 
+```
+{
+"temperatureInKelvins": "273.15",
+"cloudinessPercentance": "1.69",
+"bagroundLightVolume": "69.69",
+}  
+```
+- **XML to JSON parsing** :  The mock FMI service communicates in XML the server 
+parses the response into json format. 
 - **JSON Communication**: The server communicates using JSON format.
 - **Multithreading**: The server supports multithreading for handling multiple requests simultaneously.
 - **Password Hashing**: User passwords are hashed for security.
@@ -71,19 +83,95 @@ curl -k -d "@user.json" https://localhost:8001/registration -H "Content-Type: ap
 
 ```
 
-#### 2. Posting and Retrieving Data
-   To post or retrieve data, use the /datarecord endpoint. Only registered users can access this endpoint. An example payload is provided in the payload.json file. Use the following curl commands:
+#### 2. Posting and Retrieving Data(`/datarecord`)
+   To post or retrieve data, use the /datarecord endpoint. Only registered users can access this endpoint. An example payload is provided in the datarecord.json file. Use the following curl commands:
 
 **Post Data**:
 ```bash
-  curl -k -d "@payload.json" https://localhost:8001/datarecord -H "Content-Type: application/json" -u Anna:passwords
+  curl -k -d "@datarecord.json" https://localhost:8001/datarecord -H "Content-Type: application/json" -u scooby:doo
 ```
 
 **Get Data:**
 ```bash
-curl -k https://localhost:8001/datarecord -H "Content-Type: application/json" -u Anna:passwords
+curl -k https://localhost:8001/datarecord -H "Content-Type: application/json" -u scooby:doo
+```
+- Response:
 
 ```
+{
+    "observatory": [
+      {
+        "latitude": 8.8889,
+        "observatoryName": "holy moly",
+        "longitude": 47.333
+      }
+    ],
+    "recordRightAscension": "10h 49m 14s",
+    "recordTimeReceived": "2025-03-20T05:17:30.792Z",
+    "recordOwner": "scooby",
+    "recordPayload": "no observatory Weather field empty Array",
+    "recordDeclination": "-30° 57' 47\"",
+    "recordDescription": "It was a big one ",
+    "recordIdentifier": "skibidi"
+  }
+```
+#### 3. Posting and Retrieving Data(`/info`)
+/info endpoint uses latitude and longitude values from the user's payload to call a mock weather service to extract weather
+info at that specific location and adds it to user's payload and store in database. The mock service communicates in XML so the server first parses it into json and then extracts the useful data:
+```
+{
+"temperatureInKelvins": "273.15",
+"cloudinessPercentance": "1.69",
+"bagroundLightVolume": "69.69",
+}  
+```
+### Prerequisite for this endpoint:
+The mock weather service should be running. It is provided in the project's root 
+folder by file name `weatherserver.jar`. To run this open the root folder of project in command prompt 
+and run the following command.
+```
+java -jar weatherserver.jar
+```
+The weatherserver will start running on 4001 port.
+Now we have everything `info` endpoint needs to fucntion.
+
+**Post Data**:
+```bash
+  curl -k -d "@info.json" https://localhost:8001/info -H "Content-Type: application/json" -u scooby:doo
+```
+
+**Get Data:**
+```bash
+curl -k https://localhost:8001/info -H "Content-Type: application/json" -u scooby:doo
+
+```
+- Response:
+```
+{
+    "observatory": [
+      {
+        "latitude": 8.8889,
+        "observatoryName": "prolyholy",
+        "longitude": 47.333
+      }
+    ],
+    "recordRightAscension": "10h 49m 14s",
+    "recordTimeReceived": "2025-03-20T05:17:52.637Z",
+    "recordOwner": "scooby",
+    "recordPayload": "no observatory Weather field empty Array",
+    "recordDeclination": "-30° 57' 47\"",
+    "observatoryWeather": [
+      {
+        "temperatureInKelvins": 257.8,
+        "bagroundLightVolume": 621,
+        "cloudinessPercentance": 47.8
+      }
+    ],
+    "recordDescription": "It was a big one ",
+    "recordIdentifier": "skibidi1"
+  }
+```
+
 
 ## Future Plans
 

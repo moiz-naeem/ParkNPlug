@@ -1,4 +1,4 @@
-package com.o3.server;
+package server;
 
 
 import com.sun.net.httpserver.HttpExchange;
