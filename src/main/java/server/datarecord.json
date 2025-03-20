@@ -1,0 +1,14 @@
+{
+	"observatory": [
+		{
+			"observatoryName": "holy moly",
+			"latitude": "8.8889",
+			"longitude": "47.333"
+		}
+	],
+	"recordRightAscension": "10h 49m 14s",
+	"recordPayload": "no observatory Weather field empty Array",
+	"recordDeclination": "-30° 57' 47\"",
+	"recordDescription": "It was a big one ",
+	"recordIdentifier": "skibidi"
+}

@@ -62,7 +62,7 @@ public class MessageDB {
 					+ "username VARCHAR(50) NOT NULL PRIMARY KEY,"
 					+ "password VARCHAR(50) NOT NULL,"
 					+ "email VARCHAR(50) NOT NULL UNIQUE,"
-					+ "userNickname VARCHAR(50) NOT NULL UNIQUE"
+					+ "userNickname VARCHAR(50) NOT NULL"
 					+ ")";
 
 				String createObservatoryTable = "CREATE TABLE IF NOT EXISTS observatory ("
@@ -373,21 +373,22 @@ public class MessageDB {
 						String observatoryName = resultSet.getString("observatoryName");
 						Double latitude = resultSet.getObject("latitude") != null ? resultSet.getDouble("latitude") : null;
 						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
-						if (observatoryName != null && latitude != null && longitude != null) {
+						if (observatoryName != null || latitude != null || longitude != null) {
 							JSONObject observatoryJson = new JSONObject();
 							observatoryJson.put("observatoryName", observatoryName);
 							observatoryJson.put("latitude", latitude);
 							observatoryJson.put("longitude", longitude);
 							observatoryArray.put(observatoryJson);
+							json.put("observatory", observatoryArray);
+
 						}
-						json.put("observatory", observatoryArray);
 
 
 						JSONArray weatherArray = new JSONArray();
 						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
 						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
 						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
-						if (temperatureInKelvins != null && cloudinessPercentance != null && bagroundLightVolume != null) {
+						if (temperatureInKelvins != null || cloudinessPercentance != null || bagroundLightVolume != null) {
 							JSONObject weatherJson = new JSONObject();
 							weatherJson.put("temperatureInKelvins", temperatureInKelvins);
 							weatherJson.put("cloudinessPercentance", cloudinessPercentance);
