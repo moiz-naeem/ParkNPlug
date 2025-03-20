@@ -1,4 +1,4 @@
-package server;
+package com.o3.server;
 
 
 import com.sun.net.httpserver.HttpExchange;
@@ -11,6 +11,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
 import java.net.URL;
@@ -55,6 +57,14 @@ public class Utils {
 		}
 		return respose.toString();
 
+	}
+
+	protected  static String formUrlEncode(Double latitude, Double longitude) {
+		String Url = String.format(
+			"http://localhost:4001/wfs?latlon=%.2f,%.2f&parameters=temperatureInKelvins,cloudinessPercentance,bagroundLightVolume&starttime=%s",
+			latitude, longitude, DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+		);
+		return Url;
 	}
 
 	protected static Double[] extractParameters(JSONObject response) {
