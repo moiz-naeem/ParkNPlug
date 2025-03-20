@@ -2,7 +2,9 @@ package server;
 
 
 import com.sun.net.httpserver.HttpExchange;
+import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -10,12 +12,18 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 
 
 public class Utils {
@@ -96,5 +104,98 @@ public class Utils {
 		System.out.println("Parameter values return: " + Arrays.toString(parametervalues));
 		return parametervalues;
 	}
+
+	protected static Map<String, String> parseQueryString(String queryString){
+		Map<String, String> parameters = new HashMap<>();
+		String[] pairs = queryString.split("&");
+		System.out.println("Pairs: " + Arrays.toString(pairs));
+		for(String pair : pairs){
+			String[] idx = pair.split("=", 2);
+			System.out.println("idx: " + Arrays.toString(idx));
+			String key = URLDecoder.decode(idx[0], StandardCharsets.UTF_8);
+			String value = idx.length > 1 ? URLDecoder.decode(idx[1], StandardCharsets.UTF_8) : "";
+			System.out.println("key: " + key + " value: " + value);
+			parameters.put(key, value);
+		}
+		return parameters;
+	}
+	protected static JSONArray extractMessage(PreparedStatement statement) {
+
+		JSONArray errorResponse = new JSONArray();
+		JSONArray messages = new JSONArray();
+		try (ResultSet resultSet = statement.executeQuery()) {
+			try {
+				while (resultSet.next()) {
+					try {
+						Message message = new Message(
+							resultSet.getString("recordIdentifier"),
+							resultSet.getString("recordDescription"),
+							resultSet.getString("recordPayload"),
+							resultSet.getString("recordRightAscension"),
+							resultSet.getString("recordDeclination"),
+							resultSet.getLong("recordTimeReceived"),
+							resultSet.getString("recordOwner"),
+							null,
+							null
+						);
+
+						JSONObject json = new JSONObject();
+						json.put("recordIdentifier", message.getRecordIdentifier());
+						json.put("recordDescription", message.getRecordDescription());
+						json.put("recordPayload", message.getRecordPayload());
+						json.put("recordRightAscension", message.getRecordRightAscension());
+						json.put("recordDeclination", message.getRecordDeclination());
+						json.put("recordOwner", message.getRecordOwner());
+						json.put("recordTimeReceived", message.getRecordTimeReceived());
+
+						JSONArray observatoryArray = new JSONArray();
+						String observatoryName = resultSet.getString("observatoryName");
+						Double latitude = resultSet.getObject("latitude") != null ? resultSet.getDouble("latitude") : null;
+						Double longitude = resultSet.getObject("longitude") != null ? resultSet.getDouble("longitude") : null;
+						if (observatoryName != null || latitude != null || longitude != null) {
+							JSONObject observatoryJson = new JSONObject();
+							observatoryJson.put("observatoryName", observatoryName);
+							observatoryJson.put("latitude", latitude);
+							observatoryJson.put("longitude", longitude);
+							observatoryArray.put(observatoryJson);
+							json.put("observatory", observatoryArray);
+
+						}
+
+
+						JSONArray weatherArray = new JSONArray();
+						Double temperatureInKelvins = resultSet.getObject("temperatureInKelvins") != null ? resultSet.getDouble("temperatureInKelvins") : null;
+						Double cloudinessPercentance = resultSet.getObject("cloudinessPercentance") != null ? resultSet.getDouble("cloudinessPercentance") : null;
+						Double bagroundLightVolume = resultSet.getObject("bagroundLightVolume") != null ? resultSet.getDouble("bagroundLightVolume") : null;
+						if (temperatureInKelvins != null || cloudinessPercentance != null || bagroundLightVolume != null) {
+							JSONObject weatherJson = new JSONObject();
+							weatherJson.put("temperatureInKelvins", temperatureInKelvins);
+							weatherJson.put("cloudinessPercentance", cloudinessPercentance);
+							weatherJson.put("bagroundLightVolume", bagroundLightVolume);
+							weatherArray.put(weatherJson);
+							json.put("observatoryWeather", weatherArray);
+
+						}
+						messages.put(json);
+
+
+					} catch (JSONException e) {
+						System.out.println("JSONException: " + e.getMessage());
+						return errorResponse;
+					}
+				}
+			} catch (SQLException e) {
+				System.out.println("SQLException: " + e.getMessage());
+				return errorResponse;
+			}
+			return messages;
+
+		}catch (SQLException e) {
+			System.out.println("SQLException: " + e.getMessage());
+			return errorResponse;
+		}
+
+	}
+
 }
 
