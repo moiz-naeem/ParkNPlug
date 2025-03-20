@@ -43,6 +43,7 @@ public class Server {
             server.createContext("/registration", new RegistrationHandler(authenticator));
             server.createContext("/datarecord", new MessageHandler(database,authenticator));
 			server.createContext("/info", new MessageHandler(database,authenticator));
+			server.createContext("/search", new SearchHandler(database,authenticator));
 
 
 			server.setExecutor(Executors.newCachedThreadPool());
