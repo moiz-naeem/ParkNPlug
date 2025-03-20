@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.XML;
 
@@ -64,7 +65,7 @@ public class MessageHandler implements HttpHandler {
 			}catch (IOException e) {
 				System.err.println("Error reading request body: " + e.getMessage());
 				Utils.sendResponse(exchange, 400, jsonArray.toString());
-			} catch (org.json.JSONException e) {
+			} catch (JSONException e) {
 				System.err.println("Invalid JSON format: " + e.getMessage());
 				Utils.sendResponse(exchange, 400, jsonArray.toString());
 
@@ -86,20 +87,23 @@ public class MessageHandler implements HttpHandler {
 	}
 
 	private void handlePost(HttpExchange exchange, String[] user, JSONObject jsonRequest) throws IOException, SQLException {
+		try {
+			System.out.println("User Payload: " + jsonRequest.toString());
 
-		try{
 			String recordOwner = jsonRequest.optString("recordOwner", null);
 			lock.lock();
-			System.out.println("inside Post for recordOwner: " + recordOwner);
+			System.out.println("Inside POST for recordOwner: " + recordOwner);
 
-			try{
-				if(recordOwner == null || recordOwner.isEmpty()){
+			try {
+				if (recordOwner == null || recordOwner.isEmpty()) {
 					recordOwner = database.retrieveNickname(user[0]);
 				}
-			}finally {
+			} finally {
 				lock.unlock();
 			}
-			System.out.println("handling post");
+
+			System.out.println("Handling POST request");
+
 			String recordIdentifier = jsonRequest.getString("recordIdentifier");
 			String recordDescription = jsonRequest.getString("recordDescription");
 			String recordPayload = jsonRequest.getString("recordPayload");
@@ -108,61 +112,76 @@ public class MessageHandler implements HttpHandler {
 
 			JSONArray observatoryArray = jsonRequest.optJSONArray("observatory");
 			JSONArray observatoryWeatherArray = jsonRequest.optJSONArray("observatoryWeather");
-			boolean  success = false;
+			boolean success = false;
+
 			System.out.println("Before adding Observatory");
 			lock.lock();
 			try {
 				Observatory observatoryData = null;
 				ObservatoryWeather observatoryWeatherData = null;
-				if(observatoryArray != null){
+
+				if (observatoryArray != null) {
 					JSONObject observatory = observatoryArray.getJSONObject(0);
+
+					if (observatory.length() < 3) {
+						System.out.println("Observatory is missing fields");
+						Utils.sendResponse(exchange, 400, "Observatory is missing fields");
+						return;
+					}
+
 					String observatoryName = observatory.getString("observatoryName");
 					Double latitude = observatory.getDouble("latitude");
 					Double longitude = observatory.getDouble("longitude");
+
 					observatoryData = new Observatory(observatoryName, latitude, longitude);
 				}
-				if(observatoryWeatherArray != null){
-					JSONObject weatherData;
+
+				 if (observatoryWeatherArray != null && observatoryWeatherArray.isEmpty()) {
+					if (observatoryArray == null || observatoryArray.getJSONObject(0).length() < 3) {
+						System.out.println("Observatory data is missing for fetching weather data");
+						Utils.sendResponse(exchange, 400, "Observatory data is missing");
+						return;
+					}
+
 					JSONObject observatory = observatoryArray.getJSONObject(0);
+
+
 					Double latitude = observatory.getDouble("latitude");
 					Double longitude = observatory.getDouble("longitude");
+					String endpointUrl = Utils.formUrlEncode(latitude, longitude);
 
-					String endpointUrl = String.format(
-						"http://localhost:4001/wfs?latlon=%.2f,%.2f&parameters=temperatureInKelvins,cloudinessPercentance,bagroundLightVolume&starttime=%s",
-						latitude, longitude, DateTimeFormatter.ISO_INSTANT.format(Instant.now())
-					);
-					System.out.println("Endpoint" + endpointUrl);
+					System.out.println("Endpoint: " + endpointUrl);
 
 					String xmlResponse = Utils.sendRequest(endpointUrl);
-					JSONObject jsonRespose = XML.toJSONObject(xmlResponse);
-					System.out.println("XML to Json: " + jsonRespose);
+					JSONObject jsonResponse = XML.toJSONObject(xmlResponse);
+					System.out.println("XML to JSON: " + jsonResponse);
 
-					Double[] parameterValues = Utils.extractParameters(jsonRespose);
-
-
+					Double[] parameterValues = Utils.extractParameters(jsonResponse);
 
 					observatoryWeatherData = new ObservatoryWeather(parameterValues[0], parameterValues[1], parameterValues[2]);
-
 				}
-				Message message = new Message(recordIdentifier, recordDescription, recordPayload,
-					recordRightAscension, recordDeclination, ZonedDateTime.now(), recordOwner, observatoryData, observatoryWeatherData);
 
-				System.out.println("final message to be added: " + message);
+				Message message = new Message(
+					recordIdentifier, recordDescription, recordPayload,
+					recordRightAscension, recordDeclination, ZonedDateTime.now(),
+					recordOwner, observatoryData, observatoryWeatherData
+				);
 
-					success = database.insertObservationRecord(message);
+				System.out.println("Final message to be added: " + message);
 
-			}finally {
+				success = database.insertObservationRecord(message);
+			} finally {
 				lock.unlock();
 			}
+
 			String response = success ? "Message added successfully" : "Failed to add message";
 			exchange.getResponseHeaders().add("Content-Type", "application/json");
 			Utils.sendResponse(exchange, success ? 200 : 400, response);
-		}catch(Exception e){
-			Utils.sendResponse(exchange, 400, "Data does not conform Schema" + e);
+		} catch (Exception e) {
+
+			System.err.println("Error processing POST request: " + e.getMessage());
+			Utils.sendResponse(exchange, 400, "Data does not conform to schema: " + e.getMessage());
 		}
-
-
-
 	}
 
 
