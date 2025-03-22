@@ -9,7 +9,10 @@ The server communicates in JSON format, supports multithreading and is designed 
 ## Features
 - **User Registration**: Users can register via the `/registration` endpoint.
 - **Data Handling**: Registered users can post and retrieve data via the `/datarecord` endpoint.
-- **Internal API calls using payload data** : Registered users can post @info.json format data to `/info` endpoint 
+- **Search Functionality**: Registered users can serach for records through `/search` endpoint 
+- by using different query parameters like `nickname`, `before`, `after` , `identification` or any combination
+- of these query parameters.
+- **Internal API calls using payload data** : Registered users can post @info.json format data to `/info` endpoint
   if the user include observatoryWeather key the server calls FMI mock service using the latitude and longitude in payload to  retrieve 
  the following data and adds it to observatoryWeather key which is returned when user sends a GET Request. 
 ```
@@ -24,6 +27,7 @@ parses the response into json format.
 - **JSON Communication**: The server communicates using JSON format.
 - **Multithreading**: The server supports multithreading for handling multiple requests simultaneously.
 - **Password Hashing**: User passwords are hashed for security.
+- **ISO 8601**: The server uses ISO 8601 for timestamps to facilitate consistent and standardized date-time representation across different systems and time zones.
 
 ## Prerequisites
 Before running the server, ensure you have the following installed:
@@ -172,6 +176,21 @@ curl -k https://localhost:8001/info -H "Content-Type: application/json" -u scoob
   }
 ```
 
+#### Searching for data(`/search`):
+Registered users can search for records using `/search` by attaching query parameters of their interest.
+Currently, `/search` endpoint supports the following query parameters:
+- identification: `recordIdentifier` of the record user is looking for.
+- nickname: nickname corresponds to the `recordOwner` field and is used to look for records posted by a 
+specific user
+- before: date in ISO 8601 format before which records were posted.
+- after: data in ISO 8601 format after which records were posted.
+
+****User can user either one or any combination of these query parameters****
+
+**Curl command for searching data:**
+``` bash
+curl -k "https://localhost:8001/search?identification=skibidi&before=2025-03-12T10:08:17.242Z&nickname=sigma&after=2025-03-12T10:08:17.163Z&" -H "Content-Type: application/json" -u scooby:doo
+```
 
 ## Future Plans
 
