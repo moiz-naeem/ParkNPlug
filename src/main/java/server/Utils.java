@@ -18,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
@@ -117,6 +118,7 @@ public class Utils {
 			System.out.println("key: " + key + " value: " + value);
 			parameters.put(key, value);
 		}
+		System.out.println(parameters);
 		return parameters;
 	}
 	protected static JSONArray extractMessage(PreparedStatement statement) {
@@ -126,7 +128,10 @@ public class Utils {
 		try (ResultSet resultSet = statement.executeQuery()) {
 			try {
 				while (resultSet.next()) {
+					String updateReason =  resultSet.getObject("updateReason") != null ? resultSet.getString("updatereason") : "";
 					try {
+						DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+							.withZone(ZoneOffset.UTC);
 						Message message = new Message(
 							resultSet.getString("recordIdentifier"),
 							resultSet.getString("recordDescription"),
@@ -136,10 +141,13 @@ public class Utils {
 							resultSet.getLong("recordTimeReceived"),
 							resultSet.getString("recordOwner"),
 							null,
-							null
+							null,
+							updateReason,
+							resultSet.getString("messagePoster")
 						);
 
 						JSONObject json = new JSONObject();
+						json.put("id", resultSet.getInt("id"));
 						json.put("recordIdentifier", message.getRecordIdentifier());
 						json.put("recordDescription", message.getRecordDescription());
 						json.put("recordPayload", message.getRecordPayload());
@@ -147,6 +155,8 @@ public class Utils {
 						json.put("recordDeclination", message.getRecordDeclination());
 						json.put("recordOwner", message.getRecordOwner());
 						json.put("recordTimeReceived", message.getRecordTimeReceived());
+						json.put("updateReason", updateReason.isEmpty() ? null : updateReason);
+						json.put("modified", updateReason.isEmpty() ? null : formatter.format(Instant.ofEpochMilli(resultSet.getLong("modified"))));
 
 						JSONArray observatoryArray = new JSONArray();
 						String observatoryName = resultSet.getString("observatoryName");
@@ -176,6 +186,7 @@ public class Utils {
 							json.put("observatoryWeather", weatherArray);
 
 						}
+
 						messages.put(json);
 
 
