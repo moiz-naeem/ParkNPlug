@@ -52,6 +52,7 @@ public class MessageHandler implements HttpHandler {
 
 		if ("POST".equals(exchange.getRequestMethod())) {
 			JSONObject jsonRequest = null;
+			String username = user[0];
 			try (InputStreamReader reader = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8);
 				 BufferedReader bufferedReader = new BufferedReader(reader)) {
 				StringBuilder requestBody = new StringBuilder();
@@ -59,9 +60,11 @@ public class MessageHandler implements HttpHandler {
 				while ((line = bufferedReader.readLine()) != null) {
 					requestBody.append(line);
 				}
+				System.out.println("request body: " + requestBody.toString());
 				jsonRequest = new JSONObject(requestBody.toString());
+//				jsonRequest.put("username", username);
 				System.out.println();
-				handlePost(exchange, user, jsonRequest);
+				Handler.handlePost(exchange, user, jsonRequest, database);
 			}catch (IOException e) {
 				System.err.println("Error reading request body: " + e.getMessage());
 				Utils.sendResponse(exchange, 400, jsonArray.toString());
@@ -76,166 +79,37 @@ public class MessageHandler implements HttpHandler {
 		}
 		else if ("GET".equals(exchange.getRequestMethod())) {
 			try {
-				handleGet(exchange, user);
+				Handler.handleGet(exchange, user, database);
 			} catch (SQLException e) {
 				e.printStackTrace();
 				Utils.sendResponse(exchange, 500, "Database error: " + e.getMessage());
 			}
-		} else {
+		}
+		else if ("PUT".equals(exchange.getRequestMethod())) {
+			JSONObject jsonRequest = null;
+			try (InputStreamReader reader = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8);
+				 BufferedReader bufferedReader = new BufferedReader(reader)) {
+				StringBuilder requestBody = new StringBuilder();
+				String line;
+				while ((line = bufferedReader.readLine()) != null) {
+					requestBody.append(line);
+				}
+				jsonRequest = new JSONObject(requestBody.toString());
+				System.out.println();
+				Handler.handlePut(exchange, user, jsonRequest, database);
+			}catch (SQLException e){
+				e.printStackTrace();
+				Utils.sendResponse(exchange, 500, "Database error : " + e.getMessage());
+			}
+
+		}
+		 else {
 			Utils.sendResponse(exchange, 405, "Method not allowed. Only POST and GET are implemented");
 		}
 	}
 
-	private void handlePost(HttpExchange exchange, String[] user, JSONObject jsonRequest) throws IOException, SQLException {
-		try {
-			System.out.println("User Payload: " + jsonRequest.toString());
-
-			String recordOwner = jsonRequest.optString("recordOwner", null);
-			lock.lock();
-			System.out.println("Inside POST for recordOwner: " + recordOwner);
-
-			try {
-				if (recordOwner == null || recordOwner.isEmpty()) {
-					recordOwner = database.retrieveNickname(user[0]);
-				}
-			} finally {
-				lock.unlock();
-			}
-
-			System.out.println("Handling POST request");
-
-			String recordIdentifier = jsonRequest.getString("recordIdentifier");
-			String recordDescription = jsonRequest.getString("recordDescription");
-			String recordPayload = jsonRequest.getString("recordPayload");
-			String recordRightAscension = jsonRequest.getString("recordRightAscension");
-			String recordDeclination = jsonRequest.getString("recordDeclination");
-
-			JSONArray observatoryArray = jsonRequest.optJSONArray("observatory");
-			JSONArray observatoryWeatherArray = jsonRequest.optJSONArray("observatoryWeather");
-			boolean success = false;
-
-			System.out.println("Before adding Observatory");
-			lock.lock();
-			try {
-				Observatory observatoryData = null;
-				ObservatoryWeather observatoryWeatherData = null;
-
-				if (observatoryArray != null) {
-					JSONObject observatory = observatoryArray.getJSONObject(0);
-
-					if (observatory.length() < 3) {
-						System.out.println("Observatory is missing fields");
-						Utils.sendResponse(exchange, 400, "Observatory is missing fields");
-						return;
-					}
-
-					String observatoryName = observatory.getString("observatoryName");
-					Double latitude = observatory.getDouble("latitude");
-					Double longitude = observatory.getDouble("longitude");
-
-					observatoryData = new Observatory(observatoryName, latitude, longitude);
-				}
-
-				 if (observatoryWeatherArray != null && observatoryWeatherArray.isEmpty()) {
-					if (observatoryArray == null || observatoryArray.getJSONObject(0).length() < 3) {
-						System.out.println("Observatory data is missing for fetching weather data");
-						Utils.sendResponse(exchange, 400, "Observatory data is missing");
-						return;
-					}
-
-					JSONObject observatory = observatoryArray.getJSONObject(0);
-
-
-					Double latitude = observatory.getDouble("latitude");
-					Double longitude = observatory.getDouble("longitude");
-					String endpointUrl = Utils.formUrlEncode(latitude, longitude);
-
-					System.out.println("Endpoint: " + endpointUrl);
-
-					String xmlResponse = Utils.sendRequest(endpointUrl);
-					JSONObject jsonResponse = XML.toJSONObject(xmlResponse);
-					System.out.println("XML to JSON: " + jsonResponse);
-
-					Double[] parameterValues = Utils.extractParameters(jsonResponse);
-
-					observatoryWeatherData = new ObservatoryWeather(parameterValues[0], parameterValues[1], parameterValues[2]);
-				}
-
-				Message message = new Message(
-					recordIdentifier, recordDescription, recordPayload,
-					recordRightAscension, recordDeclination, ZonedDateTime.now(),
-					recordOwner, observatoryData, observatoryWeatherData
-				);
-
-				System.out.println("Final message to be added: " + message);
-
-				success = database.insertObservationRecord(message);
-			} finally {
-				lock.unlock();
-			}
-
-			String response = success ? "Message added successfully" : "Failed to add message";
-			exchange.getResponseHeaders().add("Content-Type", "application/json");
-			Utils.sendResponse(exchange, success ? 200 : 400, response);
-		} catch (Exception e) {
-
-			System.err.println("Error processing POST request: " + e.getMessage());
-			Utils.sendResponse(exchange, 400, "Data does not conform to schema: " + e.getMessage());
-		}
-	}
 
 
 
-	private void handleGet(HttpExchange exchange, String[] user) throws IOException, SQLException {
-		try{
-			JSONArray errorResponse = new JSONArray();
-			JSONObject errorObject = new JSONObject();
-
-
-			// String query = exchange.getRequestURI().getQuery();
-			// if (query == null || !query.startsWith("recordIdentifier=") || !query.contains("=")) {
-			//     errorObject.put("error", "Bad Request or incorrect query parameter");
-			//     errorResponse.put(errorObject);
-			//     sendResponse(exchange, 400,  errorResponse.toString());
-			//     return;
-			// }
-
-			// query = java.net.URLDecoder.decode(query, StandardCharsets.UTF_8.name());
-			// String recordIdentifier = query.split("=")[1];
-
-			// JSONArray jsonResponse = database.retrieveObservationRecord(recordIdentifier);
-			JSONArray jsonResponse = new JSONArray();
-			lock.lock();
-			try{
-				  jsonResponse = database.retrieveObservationRecord();
-
-			}finally{
-				lock.unlock();
-			}
-			exchange.getResponseHeaders().add("Content-Type", "application/json");
-			if (jsonResponse.length() > 0) {
-				Utils.sendResponse(exchange, 200, jsonResponse.toString());
-			} else {
-
-				errorObject.put("error", "No records found for identifier");
-				errorResponse.put(errorObject);
-				Utils.sendResponse(exchange, 404, errorResponse.toString());
-			}
-		}catch (SQLException e) {
-			System.err.println("Database error: " + e.getMessage());
-			JSONArray errorResponse = new JSONArray();
-			JSONObject errorObject = new JSONObject();
-			errorObject.put("error", "Database error");
-			errorResponse.put(errorObject);
-			Utils.sendResponse(exchange, 500, errorResponse.toString());
-		} catch (IOException e) {
-			System.err.println("IO error: " + e.getMessage());
-			JSONArray errorResponse = new JSONArray();
-			JSONObject errorObject = new JSONObject();
-			errorObject.put("error", "IO error");
-			errorResponse.put(errorObject);
-			Utils.sendResponse(exchange, 500, errorResponse.toString());
-		}
-	}
 
 }
