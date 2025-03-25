@@ -9,8 +9,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.security.SecureRandom;
-import java.util.ArrayList;
-import java.util.Base64;
+import java.util.*;
 
 import org.apache.commons.codec.digest.Crypt;
 
@@ -19,8 +18,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MessageDB {
@@ -79,19 +76,23 @@ public class MessageDB {
 					+ "temperatureInKelvins DOUBLE NULL,"
 					+ "cloudinessPercentance DOUBLE NULL,"
 					+ "bagroundLightVolume DOUBLE NULL"
-					+ ");";
+					+ ")";
 
 				String createMessagesTable = "CREATE TABLE IF NOT EXISTS messages ("
-					+ "recordIdentifier VARCHAR(50) NOT NULL PRIMARY KEY,"
+					+ "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+					+ "recordIdentifier VARCHAR(50) NOT NULL UNIQUE,"
 					+ "recordDescription TEXT NOT NULL,"
 					+ "recordPayload TEXT NOT NULL,"
 					+ "recordRightAscension VARCHAR(50) NOT NULL,"
 					+ "recordDeclination VARCHAR(50) NOT NULL,"
 					+ "recordTimeReceived BIGINT NOT NULL,"
+					+ "modified BIGINT NULL,"
 					+ "recordOwner VARCHAR(50),"
 					+ "observatoryId INTEGER NULL,"
+					+ "updatereason TEXT NULL,"
+					+ "messagePoster VARCHAR(50),"
 					+ "FOREIGN KEY (observatoryId) REFERENCES Observatory(id)"
-					+ ");";
+					+ ")";
 
 
 				try (Statement createStatement = dbConnection.createStatement()) {
@@ -257,8 +258,8 @@ public class MessageDB {
 			+ "temperatureInKelvins, cloudinessPercentance, bagroundLightVolume) "
 			+ "VALUES (?, ?, ?, ?, ?, ?)";
 		String insertMessageQuery = "INSERT INTO messages (recordIdentifier, recordDescription, recordPayload, "
-			+ "recordRightAscension, recordDeclination, recordTimeReceived, recordOwner, observatoryId) "
-			+ "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+			+ "recordRightAscension, recordDeclination, recordTimeReceived, modified, recordOwner, observatoryId, updatereason, messagePoster) "
+			+ "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 		lock.lock();
 		try {
@@ -328,8 +329,11 @@ public class MessageDB {
 			messageStatement.setString(4, message.getRecordRightAscension());
 			messageStatement.setString(5, message.getRecordDeclination());
 			messageStatement.setLong(6, message.dateAsInt());
-			messageStatement.setString(7, message.getRecordOwner());
-			messageStatement.setInt(8, observatoryId);
+			messageStatement.setNull(7, Types.BIGINT);
+			messageStatement.setString(8, message.getRecordOwner());
+			messageStatement.setInt(9, observatoryId);
+			messageStatement.setString(10, message.getUpdatereason());
+			messageStatement.setString(11, message.getMessagePoster());
 
 			messageStatement.executeUpdate();
 		}
@@ -402,6 +406,8 @@ public class MessageDB {
 
 			}
 			messages = Utils.extractMessage(statement);
+			System.out.println("final extracted Message: " + messages);
+
 
 
 		}finally {
@@ -417,8 +423,9 @@ public class MessageDB {
 		}
 
 		JSONArray errorResponse = new JSONArray();
-		String query = "SELECT m.recordIdentifier, m.recordDescription, m.recordPayload, "
-			+ "m.recordRightAscension, m.recordDeclination, m.recordTimeReceived, "
+		String query = "SELECT m.id, m.recordIdentifier, m.recordDescription, m.recordPayload, "
+			+ "m.recordRightAscension, m.recordDeclination, m.recordTimeReceived, m.modified,"
+			+ "m.updatereason, m.messagePoster,"
 			+ "m.recordOwner, o.observatoryName, o.latitude, o.longitude, "
 			+ "o.temperatureInKelvins, o.cloudinessPercentance, o.bagroundLightVolume "
 			+ "FROM messages m "
@@ -434,8 +441,94 @@ public class MessageDB {
 
 		return messages;
 	}
+	protected int updateMessageData(int id, JSONObject jsonRequest, String username) throws SQLException {
+		System.out.println("updateMessageData: " + jsonRequest);
+		String recordDescription = jsonRequest.getString("recordDescription");
+		String recordPayload = jsonRequest.getString("recordPayload");
+		String recordRightAscension = jsonRequest.getString("recordRightAscension");
+		String recordDeclination = jsonRequest.getString("recordDeclination");
+		JSONArray  observatoryArray = jsonRequest.optJSONArray("observatory");
+
+		String recordOwner = jsonRequest.getString("recordOwner");
+		String updateReason = jsonRequest.optString("updateReason", "N/A");
+		String time = jsonRequest.optString("recordTimeReceived");
+		Instant instant = Instant.parse(time);
+		long recordTimeReceived = instant.toEpochMilli();
 
 
+		String checkMessageQuery = "SELECT id FROM messages WHERE id = ? AND messagePoster = ?";
+		String updateMessageQuery = "UPDATE messages SET recordDescription = ?, recordPayload = ?, "
+			+ "recordRightAscension = ?, recordDeclination = ?, recordTimeReceived = ?,"
+			+ "modified = ?,"
+			+ (recordOwner.isEmpty() ? "" : "recordOwner = ?, ")
+		    + "updatereason = ? WHERE id = ?";
 
+
+		String updateObservatoryQuery = "UPDATE observatory SET observatoryName = ?, latitude = ?, longitude = ? WHERE id = ?";
+
+		lock.lock();
+		try {
+			try (PreparedStatement checkMessageStmt = dbConnection.prepareStatement(checkMessageQuery)) {
+				checkMessageStmt.setInt(1, id);
+				checkMessageStmt.setString(2, username);
+
+				try (ResultSet resultSet = checkMessageStmt.executeQuery()) {
+					if (!resultSet.next()) {
+						System.out.println("No record found with id " + id + " or you are not authorized to update the message.");
+						return 400;
+					}
+				}catch (SQLException e) {
+					System.out.println("Error while checking record " + id + ": " + e.getMessage());
+				}
+			}catch (SQLException e) {
+				System.out.println("Error while checking record " + id + ": " + e.getMessage());
+			}
+
+			try (PreparedStatement updateMessageStmt = dbConnection.prepareStatement(updateMessageQuery)) {
+				updateMessageStmt.setString(1, recordDescription);
+				updateMessageStmt.setString(2, recordPayload);
+				updateMessageStmt.setString(3, recordRightAscension);
+				updateMessageStmt.setString(4, recordDeclination);
+				updateMessageStmt.setLong(5, recordTimeReceived);
+				updateMessageStmt.setLong(6, Instant.now().toEpochMilli());
+
+				//recordTimeReceived typo in assignments's payload example
+				updateMessageStmt.setString(7, recordOwner);
+				updateMessageStmt.setString(8, updateReason);
+				updateMessageStmt.setInt(9, id);
+				updateMessageStmt.executeUpdate();
+			}catch (SQLException e) {
+				System.out.println("Error while updating message for " + id + ": " + e.getMessage());
+			}
+            if(observatoryArray != null) {
+				try (PreparedStatement updateObservatoryStmt = dbConnection.prepareStatement(updateObservatoryQuery)) {
+					JSONObject observatory = jsonRequest.getJSONArray("observatory").getJSONObject(0);
+					updateObservatoryStmt.setString(1, observatory.getString("observatoryName"));
+					updateObservatoryStmt.setDouble(2, observatory.getDouble("latitude"));
+					updateObservatoryStmt.setDouble(3, observatory.getDouble("longitude"));
+					updateObservatoryStmt.setInt(4, id);
+					updateObservatoryStmt.executeUpdate();
+				}catch (SQLException e) {
+					System.out.println("Error while updating observatory record " + id + ": " + e.getMessage());
+				}
+			}
+
+
+			return 200;
+
+		} catch (Exception e) {
+			System.out.println("Error updating observation: " + e.getMessage());
+			return 500;
+		} finally {
+			lock.unlock();
+		}
+	}
 
 }
+
+
+
+
+
+
+
